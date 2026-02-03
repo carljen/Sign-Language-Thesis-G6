@@ -1,105 +1,215 @@
-Sign Language Detection System (Thesis)
-This project uses Computer Vision (MediaPipe) and Deep Learning (TensorFlow/Keras) to detect sign language gestures in real-time.
 
-🛠️ Setup & Installation
-Prerequisites: Python 3.10 (Recommended)
+# 🤟 Sign Language Detection System (Thesis)
 
-Clone the Repository:
+A real-time **Sign Language Detection System** using **Computer Vision (MediaPipe)** and **Deep Learning (TensorFlow/Keras)**.
+This project detects sign language gestures through a webcam and classifies them using a trained neural network model.
 
-Bash
+---
 
+## 🛠️ Setup & Installation
+
+### Prerequisites
+
+* **Python 3.10** (Recommended)
+
+---
+
+### 📥 Clone the Repository
+
+```bash
 git clone <repository_url>
 cd <repository_name>
-Install Dependencies:
-Run this command to install TensorFlow, MediaPipe, and OpenCV:
+```
 
-Bash
+---
 
+### 📦 Install Dependencies
+
+Install all required libraries using:
+
+```bash
 pip install -r requirements.txt
-Note: If you get errors on Windows, you may need to install specific versions manually:
+```
 
-Bash
+⚠️ **Windows Fix (If Errors Occur)**
+Manually install compatible versions:
 
+```bash
 pip install "numpy<2.0" "protobuf==3.20.3"
-📂 Project Structure
-1_data_collection.py: Script to record your hand/body movements.
+```
 
-2_train_model.py: Script to train the AI using the collected data.
+---
 
-3_realtime_test.py: Script to test the detection with the webcam.
+## 📂 Project Structure
 
-MP_Data/: Folder containing the collected Numpy arrays (The Dataset).
+```text
+├── 1_data_collection.py     # Script for recording sign language data
+├── 2_train_model.py         # Script for training the model
+├── 3_realtime_test.py       # Real-time webcam testing
+├── MP_Data/                 # Dataset (stored as NumPy arrays)
+├── logs/                    # TensorBoard training logs
+└── action.h5                # Trained model file
+```
 
-logs/: Folder for TensorBoard training logs.
+---
 
-action.h5: The saved trained model file.
+## 🤖 How to Train the Model (For Teammates)
 
-🤖 How to Train the Model (Instructions for Teammates)
-If you need to add new signs or retrain the model, follow these exact steps to ensure accuracy.
+Follow these steps **exactly** to ensure consistent and accurate results.
 
-Step 1: Collect Data
-Run the collection script:
+---
 
-Bash
+### 🧩 Step 1: Collect Data
 
+Run the data collection script:
+
+```bash
 python 1_data_collection.py
-To Add a New Action: Open the script and change actions = np.array(['hello', 'thanks']) to include your new word.
+```
 
-Accuracy Checklist (CRITICAL):
+#### ➕ Adding a New Action
 
-For Moving Signs (e.g., Hello): Start with hands in lap -> Perform sign -> Return hands to lap. (The "Sandwich" Rule).
+Inside `1_data_collection.py`, locate:
 
-For Static Letters (e.g., A, B): Hold the pose like a statue for the full recording.
+```python
+actions = np.array(['hello', 'thanks'])
+```
 
-Vary Position: Move your body slightly left/right or forward/back every 10 videos so the AI doesn't memorize the background.
+Add your new sign here **in the exact order you want**.
 
-Step 2: Train the Model
-Once data is collected, run the training script:
+---
 
-Bash
+#### ✅ Accuracy Checklist (CRITICAL)
 
+**For Moving Signs (e.g., “Hello”):**
+
+* Start with hands in lap
+* Perform the sign
+* Return hands to lap
+  👉 *The “Sandwich Rule”*
+
+**For Static Signs (e.g., A, B):**
+
+* Hold the pose steadily for the entire recording duration
+
+**Data Variation:**
+
+* Slightly change body position (left/right or forward/back)
+* Do this every ~10 recordings to avoid background memorization
+
+---
+
+### 🧠 Step 2: Train the Model
+
+After data collection:
+
+```bash
 python 2_train_model.py
-Expected Output: You will see a progress bar for "Epochs".
+```
 
-Success: The training is done when Categorical Accuracy is close to 1.00 (100%).
+**Expected Output:**
 
-Result: This will generate/overwrite the action.h5 file.
+* Epoch progress bar in the terminal
 
-Step 3: Update the Test Script
-If you added new actions in Step 1, you MUST update the 3_realtime_test.py file.
+**Success Indicator:**
 
-Find: actions = np.array(['hello', 'thanks'])
+* `Categorical Accuracy` close to **1.00 (100%)**
 
-Update it to match the exact order used in the collection script.
+**Result:**
 
-⚡ Testing & Instruments (For Defense)
-To validate the system efficiency, run 3_realtime_test.py.
+* Generates or overwrites `action.h5`
 
-1. Latency Test (Speed)
-The terminal will print the Latency in milliseconds (ms) for every frame.
+---
 
-Goal: < 100ms for real-time feel.
+### 🔁 Step 3: Update the Test Script
 
-Instrument: Software Profiler (Python time module).
+If you added new actions, update `3_realtime_test.py`.
 
-2. Distance Accuracy Test
-Use a tape measure to mark 0.5m, 1.0m, and 1.5m on the floor.
+Find:
 
-Stand at 0.5m. Perform the sign 10 times. Record success rate.
+```python
+actions = np.array(['hello', 'thanks'])
+```
 
-Move to 1.0m. Repeat.
+Update it to **match the exact order** used in `1_data_collection.py`.
 
-Move to 1.5m. Repeat.
+⚠️ Order mismatch = wrong predictions.
 
-⚠️ Troubleshooting Common Errors
-1. "ModuleNotFoundError: No module named numpy..."
+---
 
-Fix: Your NumPy version is too new. Run: pip install "numpy<2.0"
+## ⚡ Testing & Instruments (For Defense)
 
-2. Program Freezes/Hangs on Startup
+Run:
 
-Fix: A conflict between TensorFlow and Protobuf. Run: pip install "protobuf==3.20.3"
+```bash
+python 3_realtime_test.py
+```
 
-3. "ValueError: Shapes (None, ...) are incompatible"
+---
 
-Fix: You changed the extract_keypoints function. Ensure all scripts (Collection, Train, Test) use the exact same keypoint extraction logic (e.g., if you removed Face Mesh in one, remove it in all).
+### ⏱️ 1. Latency Test (Speed)
+
+* Latency (in milliseconds) is printed per frame in the terminal
+
+**Target:**
+
+* `< 100 ms` for real-time performance
+
+**Instrument Used:**
+
+* Python `time` module (Software Profiler)
+
+---
+
+### 📏 2. Distance Accuracy Test
+
+1. Mark distances using a tape measure:
+
+   * 0.5 m
+   * 1.0 m
+   * 1.5 m
+
+2. At each distance:
+
+   * Perform the sign **10 times**
+   * Record successful detections
+
+3. Compare accuracy across distances
+
+---
+
+## ⚠️ Troubleshooting Common Errors
+
+### ❌ `ModuleNotFoundError: No module named 'numpy'`
+
+**Cause:** NumPy version is too new
+**Fix:**
+
+```bash
+pip install "numpy<2.0"
+```
+
+---
+
+### ❌ Program Freezes / Hangs on Startup
+
+**Cause:** TensorFlow–Protobuf conflict
+**Fix:**
+
+```bash
+pip install "protobuf==3.20.3"
+```
+
+---
+
+### ❌ `ValueError: Shapes (None, ...) are incompatible`
+
+**Cause:** Inconsistent `extract_keypoints()` logic across scripts
+
+**Fix:**
+
+* Ensure **Data Collection**, **Training**, and **Testing** scripts use the **same keypoint extraction**
+* If you removed Face Mesh or Body landmarks, remove them in **all scripts**
+
+---
+
