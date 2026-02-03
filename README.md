@@ -1,47 +1,47 @@
-# Sign Language Detection System (Thesis)
-
+Sign Language Detection System (Thesis)
 This project uses Computer Vision (MediaPipe) and Deep Learning (TensorFlow/Keras) to detect sign language gestures in real-time.
 
-## 🛠️ Setup & Installation
+🛠️ Setup & Installation
+Prerequisites: Python 3.10 (Recommended)
 
-**Prerequisites:** Python 3.10 (Recommended)
+Clone the Repository:
 
-1.  **Clone the Repository:**
-    ```bash
-    git clone <repository_url>
-    cd <repository_name>
-    ```
+Bash
 
-2.  **Install Dependencies:**
-    Run this command to install TensorFlow, MediaPipe, and OpenCV:
-    ```bash
-    pip install -r requirements.txt
-    ```
-    *Note: If you get errors on Windows, you may need to install specific versions manually:*
-    ```bash
-    pip install "numpy<2.0" "protobuf==3.20.3"
-    ```
+git clone <repository_url>
+cd <repository_name>
+Install Dependencies:
+Run this command to install TensorFlow, MediaPipe, and OpenCV:
 
----
+Bash
 
-## 📂 Project Structure
+pip install -r requirements.txt
+Note: If you get errors on Windows, you may need to install specific versions manually:
 
-* `1_data_collection.py`: Script to record your hand/body movements.
-* `2_train_model.py`: Script to train the AI using the collected data.
-* `3_realtime_test.py`: Script to test the detection with the webcam.
-* `MP_Data/`: Folder containing the collected Numpy arrays (The Dataset).
-* `logs/`: Folder for TensorBoard training logs.
-* `action.h5`: The saved trained model file.
+Bash
 
----
+pip install "numpy<2.0" "protobuf==3.20.3"
+📂 Project Structure
+1_data_collection.py: Script to record your hand/body movements.
 
-## 🤖 How to Train the Model (Instructions for Teammates)
+2_train_model.py: Script to train the AI using the collected data.
 
-If you need to add new signs or retrain the model, follow these **exact steps** to ensure accuracy.
+3_realtime_test.py: Script to test the detection with the webcam.
 
-### Step 1: Collect Data
+MP_Data/: Folder containing the collected Numpy arrays (The Dataset).
+
+logs/: Folder for TensorBoard training logs.
+
+action.h5: The saved trained model file.
+
+🤖 How to Train the Model (Instructions for Teammates)
+If you need to add new signs or retrain the model, follow these exact steps to ensure accuracy.
+
+Step 1: Collect Data
 Run the collection script:
-```bash
+
+Bash
+
 python 1_data_collection.py
 To Add a New Action: Open the script and change actions = np.array(['hello', 'thanks']) to include your new word.
 
