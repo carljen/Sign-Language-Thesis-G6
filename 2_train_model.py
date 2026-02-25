@@ -8,7 +8,7 @@ import os
 
 # --- CONFIGURATION ---
 DATA_PATH = os.path.join('MP_Data') 
-actions = np.array(['hello', 'thanks', 'iloveyou','a', 'b'])  # Updated to include 'a' and 'b'
+actions = np.array(['good', 'morning'])  # Updated to include 'a' and 'b'
 no_sequences = 30 
 sequence_length = 30
 # ---------------------

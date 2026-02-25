@@ -9,7 +9,7 @@ import mediapipe as mp
 DATA_PATH = os.path.join('MP_Data') 
 
 # Actions that we try to detect
-actions = np.array(['a', 'b'])
+actions = np.array(['good', 'morning'])
 
 # Thirty videos worth of data
 no_sequences = 30
