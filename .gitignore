@@ -10,3 +10,15 @@ __pycache__/
 # Ignore IDE settings
 .vscode/
 .idea/
+
+# ignore tensorboard logs
+Logs/
+
+# ignore the generated matrix image so it doesn't overwrite theirs
+confusion_matrix_results.png
+
+# ignore trained models
+*.h5
+
+# ignore video recordings
+*.avi
