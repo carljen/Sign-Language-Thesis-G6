@@ -41,7 +41,7 @@ def normalize_to_nose(keypoints):
 
 # --- CONFIGURATION ---
 DATA_PATH = os.path.join('MP_Data') 
-actions = np.array(['hello', 'thanks', 'iloveyou','a', 'b','c','d','e', 'f', 'g', 'h'])  # Updated to include 'a' and 'b'
+actions = np.array(['1', '2', '3', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', 'again', 'deaf', 'goodbye', 'hearing', 'hello', 'How are you', 'iloveyou', 'Nice to meet you!', 'please', 'see_you_later', 'sorry', 'thanks', 'What`s your name', 'what`s up!', 'you'])
 no_sequences = 30 
 sequence_length = 30
 # ---------------------
