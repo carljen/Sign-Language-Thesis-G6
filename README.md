@@ -1,69 +1,47 @@
+Sign Language Detection System (Thesis)
+This project uses Computer Vision (MediaPipe) and Deep Learning (TensorFlow/Keras) to detect sign language gestures in real-time.
 
-# 🤟 Sign Language Detection System (Thesis)
+🛠️ Setup & Installation
+Prerequisites: Python 3.10 (Recommended)
 
-A real-time **Sign Language Detection System** using **Computer Vision (MediaPipe)** and **Deep Learning (TensorFlow/Keras)**.
-This project detects sign language gestures through a webcam and classifies them using a trained neural network model.
+Clone the Repository:
 
----
+Bash
 
-## 🛠️ Setup & Installation
-
-### Prerequisites
-
-* **Python 3.10** (Recommended)
-
----
-
-### 📥 Clone the Repository
-
-```bash
 git clone <repository_url>
 cd <repository_name>
-```
+Install Dependencies:
+Run this command to install TensorFlow, MediaPipe, and OpenCV:
 
----
+Bash
 
-### 📦 Install Dependencies
-
-Install all required libraries using:
-
-```bash
 pip install -r requirements.txt
-```
+Note: If you get errors on Windows, you may need to install specific versions manually:
 
-⚠️ **Windows Fix (If Errors Occur)**
-Manually install compatible versions:
+Bash
 
-```bash
 pip install "numpy<2.0" "protobuf==3.20.3"
-```
+📂 Project Structure
+1_data_collection.py: Script to record your hand/body movements.
 
----
+2_train_model.py: Script to train the AI using the collected data.
 
-## 📂 Project Structure
+3_realtime_test.py: Script to test the detection with the webcam.
 
-```text
-├── 1_data_collection.py     # Script for recording sign language data
-├── 2_train_model.py         # Script for training the model
-├── 3_realtime_test.py       # Real-time webcam testing
-├── MP_Data/                 # Dataset (stored as NumPy arrays)
-├── logs/                    # TensorBoard training logs
-└── action.h5                # Trained model file
-```
+MP_Data/: Folder containing the collected Numpy arrays (The Dataset).
 
----
+logs/: Folder for TensorBoard training logs.
 
-## 🤖 How to Train the Model (For Teammates)
+action.h5: The saved trained model file.
 
-Follow these steps **exactly** to ensure consistent and accurate results.
+🤖 How to Train the Model (Instructions for Teammates)
+If you need to add new signs or retrain the model, follow these exact steps to ensure accuracy.
 
----
+Step 1: Collect Data
+Run the collection script:
 
-### 🧩 Step 1: Collect Data
+Bash
 
-Run the data collection script:
-
-```bash
 python 1_data_collection.py
 ```
 

@@ -12,12 +12,42 @@ import numpy as np
 import mediapipe as mp
 import time
 
+def normalize_to_nose(keypoints):
+    # copy the array so we don't break the original
+    norm = np.copy(keypoints)
+    
+    # the nose is the very first landmark (index 0=x, 1=y, 2=z)
+    nx, ny, nz = norm[0], norm[1], norm[2]
+    
+    # if pose is not detected, don't do math on zeros
+    if np.all(norm[:132] == 0):
+        return norm
+        
+    # 1. shift pose (skip visibility indices)
+    norm[0:132:4] -= nx # x
+    norm[1:132:4] -= ny # y
+    norm[2:132:4] -= nz # z
+    
+    # 2. shift left hand if it is on screen
+    if not np.all(norm[132:195] == 0):
+        norm[132:195:3] -= nx
+        norm[133:195:3] -= ny
+        norm[134:195:3] -= nz
+        
+    # 3. shift right hand if it is on screen
+    if not np.all(norm[195:258] == 0):
+        norm[195:258:3] -= nx
+        norm[196:258:3] -= ny
+        norm[197:258:3] -= nz
+        
+    return norm
+
 # Load your trained model
 model = load_model('action.h5') # Make sure your file is named 'action.h5'
 
 # Define your actions (Must match the order you trained on!)
 # Example: actions = np.array(['hello', 'thanks', 'iloveyou']) 
-actions = np.array(['hello', 'thanks', 'iloveyou', 'a'  , 'b'])  # Updated to include 'a' and 'b'
+actions = np.array(['hello', 'thanks', 'iloveyou', 'a'  , 'b', 'c', 'd', 'e', 'f', 'g', 'h'])  # Updated to include 'a' and 'b'
 # ==========================================
 # CONFIGURATION AREA
 # ==========================================
@@ -73,7 +103,8 @@ with mp_holistic.Holistic(
     print("Press 'q' to quit")
     sequence = []
     sentence = []
-    threshold = 0.8 # Confidence threshold (only show result if 80% sure)
+    predictions = [] # new list to track history for debounce
+    threshold = 0.85
 
     while cap.isOpened():
         
@@ -99,35 +130,44 @@ with mp_holistic.Holistic(
         # ==========================================
         # PREDICTION LOGIC
         # ==========================================
-        # 1. Extract Keypoints
+        # 1. extract keypoints
         keypoints = extract_keypoints(results)
+        keypoints = normalize_to_nose(keypoints)
         sequence.append(keypoints)
-        sequence = sequence[-30:] # Keep only the last 30 frames
+        sequence = sequence[-30:]
 
-        # 2. Predict (Only once we have 30 frames)
-        # 2. Predict (Only once we have 30 frames)
+        # 2. predict
         if len(sequence) == 30:
             res = model.predict(np.expand_dims(sequence, axis=0))[0]
             
-            # Get the highest confidence action
+            # get the highest confidence action
             best_idx = np.argmax(res)
             current_action = actions[best_idx]
             confidence = res[best_idx]
+            
+            # store the guess in our new list
+            predictions.append(best_idx)
 
-            # --- DEBUGGING: Print to Console ---
-            # This helps you see if the model works at all. 
-            # If you see numbers changing in your terminal, the AI is working!
+            # print to console for debugging
             print(f"Action: {current_action} | Confidence: {confidence:.2f}")
 
-            # Logic to build the sentence (Only if confident)
-            if confidence > threshold: 
-                if len(sentence) > 0: 
-                    if current_action != sentence[-1]:
+            # === THE DEBOUNCE LOGIC ===
+            # grab the last 15 predictions
+            last_15 = predictions[-15:]
+            
+            # check if all 15 of the last frames are the EXACT SAME word
+            if len(last_15) == 15 and last_15.count(best_idx) == 15:
+                
+                # logic to build the sentence (only if confident AND stable)
+                if confidence > threshold: 
+                    if len(sentence) > 0: 
+                        if current_action != sentence[-1]:
+                            sentence.append(current_action)
+                    else:
                         sentence.append(current_action)
-                else:
-                    sentence.append(current_action)
+            # ==========================
 
-            # Limit sentence length
+            # limit sentence length
             if len(sentence) > 5: 
                 sentence = sentence[-5:]
 
