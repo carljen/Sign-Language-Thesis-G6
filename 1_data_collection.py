@@ -9,13 +9,14 @@ import mediapipe as mp
 DATA_PATH = os.path.join('MP_Data') 
 
 # Actions that we try to detect
-actions = np.array(['1', '2', '3'])
+actions = np.array(["Nice to meet you!"])
 
 # Thirty videos worth of data
 no_sequences = 30
 
-# Videos are going to be 30 frames in length
-sequence_length = 30
+# Capture duration per sample (seconds), independent of camera FPS
+capture_seconds = 3.0
+start_delay_ms = 3000
 
 # Create the folder structure automatically
 for action in actions: 
@@ -28,72 +29,117 @@ for action in actions:
 # ==========================================
 # 2. SETUP MEDIAPIPE
 # ==========================================
-mp_holistic = mp.solutions.holistic
+mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
-mp_drawing_styles = mp.solutions.drawing_styles
 
 # ==========================================
 # 3. HELPER FUNCTION (Extract Keypoints)
 # ==========================================
 def extract_keypoints(results):
-    # Pose (33*4 = 132)
-    pose = np.array([[res.x, res.y, res.z, res.visibility] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33*4)
-    # Left Hand (21*3 = 63)
-    lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21*3)
-    # Right Hand (21*3 = 63)
-    rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
+    lh = np.zeros(21 * 3)
+    rh = np.zeros(21 * 3)
+
+    if results.multi_hand_landmarks and results.multi_handedness:
+        for hand_landmarks, handedness in zip(results.multi_hand_landmarks, results.multi_handedness):
+            label = handedness.classification[0].label
+            coords = np.array([[res.x, res.y, res.z] for res in hand_landmarks.landmark]).flatten()
+
+            if label == 'Left':
+                lh = coords
+            elif label == 'Right':
+                rh = coords
     
-    # Concatenate (Total 258 points) -> NO FACE MESH
-    return np.concatenate([pose, lh, rh])
+    # Concatenate hands only (Total 126 points)
+    return np.concatenate([lh, rh])
+
+
+def clear_sequence_folder(action, sequence):
+    seq_path = os.path.join(DATA_PATH, action, str(sequence))
+    if not os.path.exists(seq_path):
+        os.makedirs(seq_path)
+        return
+
+    for fname in os.listdir(seq_path):
+        if fname.endswith('.npy'):
+            os.remove(os.path.join(seq_path, fname))
 
 # ==========================================
 # 4. MAIN DATA COLLECTION LOOP
 # ==========================================
 cap = cv2.VideoCapture(0)
 
-# Set model complexity to 1 to match your real-time speed
-with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1) as holistic:
+# Track hands only to remove face and arm/body processing
+with mp_hands.Hands(
+    max_num_hands=2,
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
+) as hands:
+    quit_requested = False
     
     # Loop through actions (hello -> thanks -> iloveyou)
     for action in actions:
+        if quit_requested:
+            break
+
         # Loop through sequences (videos) 0 to 29
         for sequence in range(no_sequences):
-            # Loop through video length (frames) 0 to 29
-            for frame_num in range(sequence_length):
+            clear_sequence_folder(action, sequence)
+
+            # Warm-up screen before each sample
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            warmup_image = frame.copy()
+            cv2.putText(warmup_image, 'STARTING COLLECTION', (120, 200),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 4, cv2.LINE_AA)
+            cv2.putText(warmup_image, f'Action: {action} | Sample: {sequence}', (15, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+            cv2.putText(warmup_image, f'Preparing for {start_delay_ms // 1000}s...', (15, 60),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.imshow('OpenCV Feed', warmup_image)
+
+            if cv2.waitKey(start_delay_ms) & 0xFF == ord('q'):
+                quit_requested = True
+                break
+
+            frame_num = 0
+            start_time = cv2.getTickCount() / cv2.getTickFrequency()
+
+            while True:
+                now = cv2.getTickCount() / cv2.getTickFrequency()
+                elapsed = now - start_time
+
+                if elapsed >= capture_seconds:
+                    break
 
                 # Read Feed
                 ret, frame = cap.read()
+                if not ret:
+                    continue
 
                 # Make detections
                 image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 image.flags.writeable = False
-                results = holistic.process(image)
+                results = hands.process(image)
 
                 # Draw landmarks
                 image.flags.writeable = True
                 image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
                 
-                # Draw Pose
-                mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS)
                 # Draw Hands
-                mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-                mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
-                
-                # NEW: Apply wait logic
-                if frame_num == 0: 
-                    # Display "STARTING COLLECTION" for 2 seconds
-                    cv2.putText(image, 'STARTING COLLECTION', (120,200), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255, 0), 4, cv2.LINE_AA)
-                    cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    # Show to screen
-                    cv2.imshow('OpenCV Feed', image)
-                    cv2.waitKey(2000) # Wait 2 seconds
-                else: 
-                    # Just show the collection status
-                    cv2.putText(image, 'Collecting frames for {} Video Number {}'.format(action, sequence), (15,12), 
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
-                    cv2.imshow('OpenCV Feed', image)
+                if results.multi_hand_landmarks:
+                    for hand_landmarks in results.multi_hand_landmarks:
+                        mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+                remaining = max(0.0, capture_seconds - elapsed)
+                cv2.putText(image, f'Collecting: {action} | Sample: {sequence}', (15, 25),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.putText(image, f'Time left: {remaining:.1f}s', (15, 55),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+                cv2.putText(image, f'Frames captured: {frame_num}', (15, 85),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+                cv2.imshow('OpenCV Feed', image)
                 
                 # EXPORT KEYPOINTS
                 keypoints = extract_keypoints(results)
@@ -102,7 +148,13 @@ with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=
 
                 # Break gracefully
                 if cv2.waitKey(10) & 0xFF == ord('q'):
+                    quit_requested = True
                     break
+
+                frame_num += 1
+
+            if quit_requested:
+                break
                     
     cap.release()
     cv2.destroyAllWindows()
