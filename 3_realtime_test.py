@@ -10,6 +10,9 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import tensorflow as tf
 from tensorflow.keras.models import load_model
 
+import matplotlib
+matplotlib.use('Agg') # Forces matplotlib to not create any windows
+
 # Other imports
 import cv2
 import numpy as np
@@ -154,22 +157,14 @@ def translate_text(text, target_lang="en"):
 
 def speak_text(text, lang="en"):
     with speech_lock:
-        temp_path = None
+        temp_path = "temp_speech.mp3"
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_path = temp_file.name
-
             tts = gTTS(text=text, lang=lang)
             tts.save(temp_path)
-            playsound(temp_path)
+            # Use the Pi's native player (mpg123 is usually pre-installed)
+            os.system(f"mpg123 -q {temp_path} &") 
         except Exception as e:
             print("TTS error:", e)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
 
 
 def speak_async(text, lang="en"):
@@ -193,7 +188,7 @@ actions = np.array([
 # CONFIG
 # ==========================================
 OUTPUT_FPS = 15.0
-MODEL_COMPLEXITY = 1
+MODEL_COMPLEXITY = 0
 SEQUENCE_LENGTH = 30
 STABLE_FRAMES = 15
 THRESHOLD = 0.85
