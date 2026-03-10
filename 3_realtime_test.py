@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg') # Forces matplotlib to not create any windows
 import os
 import threading
 import time
@@ -8,10 +10,9 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 # Import TensorFlow first
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+from keras.models import load_model # Note: No 'tensorflow.' prefix
 
-import matplotlib
-matplotlib.use('Agg') # Forces matplotlib to not create any windows
+
 
 # Other imports
 import cv2
@@ -19,7 +20,7 @@ import numpy as np
 import mediapipe as mp
 from deep_translator import GoogleTranslator
 from gtts import gTTS
-from playsound import playsound
+# from playsound import playsound
 
 
 # ==========================================
@@ -157,11 +158,11 @@ def translate_text(text, target_lang="en"):
 
 def speak_text(text, lang="en"):
     with speech_lock:
-        temp_path = "temp_speech.mp3"
+        temp_path = "temp_voice.mp3"
         try:
             tts = gTTS(text=text, lang=lang)
             tts.save(temp_path)
-            # Use the Pi's native player (mpg123 is usually pre-installed)
+            # Use os.system to play it in the background
             os.system(f"mpg123 -q {temp_path} &") 
         except Exception as e:
             print("TTS error:", e)
