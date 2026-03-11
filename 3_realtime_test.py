@@ -8,16 +8,21 @@ import tempfile
 # Hide TensorFlow warnings
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-# Import TensorFlow first
-from tensorflow.keras.models import load_model
-
-# Other imports
+# Import TensorFlow
+import tensorflow as tf
 import cv2
 import numpy as np
 import mediapipe as mp
 from deep_translator import GoogleTranslator
 from gtts import gTTS
-from playsound import playsound
+import io
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+    # Initialize pygame mixer for audio
+    pygame.mixer.init()
+except ImportError:
+    PYGAME_AVAILABLE = False
 
 
 # ==========================================
@@ -245,21 +250,28 @@ def translate_text(text, target_lang="en", dialect_key="std"):
         if cache_key in translation_cache:
             return translation_cache[cache_key]
 
+        # Try dialect phrases first (for custom translations)
         if dialect_key in dialect_phrase_map:
             if text in dialect_phrase_map[dialect_key]:
                 translated = dialect_phrase_map[dialect_key][text]
                 translation_cache[cache_key] = translated
                 return translated
 
-        if target_lang == "ceb":
-            # Fallback translation target when Cebuano isn't directly supported by provider.
-            target_lang = "tl"
-
-        translated = GoogleTranslator(source="auto", target=target_lang).translate(text)
-        translation_cache[cache_key] = translated
-        return translated
+        # Use GoogleTranslator for any language
+        # It supports 100+ languages via Google Translate API
+        try:
+            print(f"[TRANS] Translating '{text}' to {target_lang} ({dialect_key})")
+            translated = GoogleTranslator(source="en", target=target_lang).translate(text)
+            print(f"[TRANS] Result: '{translated}'")
+            translation_cache[cache_key] = translated
+            return translated
+        except Exception as gtrans_error:
+            print(f"GoogleTranslator error for {target_lang}: {gtrans_error}")
+            # Fallback: return original text
+            return text
+            
     except Exception as e:
-        print("Translation error:", e)
+        print(f"Translation error: {e}")
         return text
 
 
@@ -274,24 +286,73 @@ def get_language_runtime(lang_key):
 
 def speak_text(base_text, lang="en", dialect_key="std"):
     with speech_lock:
-        temp_path = None
         try:
             translated_text = translate_text(base_text, lang, dialect_key)
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_path = temp_file.name
-
-            tts = gTTS(text=translated_text, lang=lang)
-            tts.save(temp_path)
-            playsound(temp_path)
+            print(f"[TTS] {translated_text}")
+            
+            # gTTS language code mapping (gTTS uses different codes than GoogleTranslator)
+            gtts_lang_map = {
+                "en": "en",         # English
+                "tl": "tl",         # Tagalog (closest to Filipino in gTTS)
+                "fil": "tl",        # Filipino - use Tagalog
+                "es": "es",         # Spanish
+                "fr": "fr",         # French
+                "de": "de",         # German
+                "it": "it",         # Italian
+                "pt": "pt",         # Portuguese
+                "ru": "ru",         # Russian
+                "ja": "ja",         # Japanese
+                "ko": "ko",         # Korean
+                "ar": "ar",         # Arabic
+                "hi": "hi",         # Hindi
+                "vi": "vi",         # Vietnamese
+                "th": "th",         # Thai
+                "ceb": "tl",        # Cebuano - use Tagalog
+            }
+            
+            gtts_lang = gtts_lang_map.get(lang, "en")  # Default to English if not found
+            
+            # Use gTTS (Google Text-to-Speech)
+            try:
+                tts = gTTS(translated_text, lang=gtts_lang, slow=False)
+                
+                # Try to play with pygame (more reliable cross-platform)
+                if PYGAME_AVAILABLE:
+                    try:
+                        # Save to BytesIO and play with pygame
+                        fp = io.BytesIO()
+                        tts.write_to_fp(fp)
+                        fp.seek(0)
+                        
+                        pygame.mixer.music.load(fp)
+                        pygame.mixer.music.play()
+                        
+                        # Wait for audio to finish
+                        while pygame.mixer.music.get_busy():
+                            time.sleep(0.1)
+                        
+                        print(f"✓ TTS via gTTS ({gtts_lang})")
+                    except Exception as pygame_err:
+                        print(f"pygame playback error: {pygame_err}")
+                        # Fallback: save to file
+                        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio:
+                            temp_path = temp_audio.name
+                            tts.save(temp_path)
+                            print(f"Audio saved to: {temp_path}")
+                            os.unlink(temp_path)
+                else:
+                    # Fallback: save to file
+                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio:
+                        temp_path = temp_audio.name
+                        tts.save(temp_path)
+                        print(f"Audio saved to: {temp_path}")
+                        os.unlink(temp_path)
+                        print("(install pygame for audio playback)")
+            except Exception as e:
+                print(f"gTTS error: {e}")
+                
         except Exception as e:
-            print("TTS error:", e)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
+            print(f"TTS error: {e}")
 
 
 def speak_async(base_text, lang="en", dialect_key="std"):
@@ -317,11 +378,16 @@ def build_translated_sentence(sentence_actions, lang_code, dialect_key):
 
 
 # ==========================================
-# LOAD MODEL
+# LOAD TFLITE MODEL
 # ==========================================
-model = load_model("action.h5")
-model_expected_timesteps = int(model.input_shape[1]) if model.input_shape[1] is not None else 60
-model_expected_features = int(model.input_shape[-1])
+print("Loading TFLite Interpreter (Hardware Accelerated)...")
+interpreter = tf.lite.Interpreter(model_path="action.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+model_expected_timesteps = input_details[0]['shape'][1] if input_details[0]['shape'][1] is not None else 60
+model_expected_features = input_details[0]['shape'][-1]
+actions = np.array(sorted([d for d in os.listdir("MP_Data") if os.path.isdir(os.path.join("MP_Data", d))], key=str.lower))
 
 if model_expected_features == 126:
     print("Model input detected: 126 features (hands-only model).")
@@ -329,7 +395,7 @@ elif model_expected_features == 258:
     print("Model input detected: 258 features (legacy model). Using zero-pose compatibility mode.")
 else:
     raise ValueError(
-        f"Unsupported model input shape {model.input_shape}. Use a model trained with 126 or 258 features."
+        f"Unsupported model input shape {input_details[0]['shape']}. Use a model trained with 126 or 258 features."
     )
 
 DATA_PATH = os.path.join("MP_Data")
@@ -346,7 +412,6 @@ def get_actions_from_data_path(data_path):
     if not action_dirs:
         raise ValueError(f"No action folders found in: {data_path}")
 
-    # Keep ordering deterministic so training and realtime map classes identically.
     return np.array(sorted(action_dirs, key=str.lower))
 
 
@@ -367,11 +432,13 @@ print("Total classes:", len(actions))
 OUTPUT_FPS = 20.0
 SEQUENCE_LENGTH = model_expected_timesteps
 STABLE_FRAMES = 3
-STATIC_THRESHOLD = 0.88
+STATIC_THRESHOLD = 0.92          # Increased: 0.88 was too sensitive
 DYNAMIC_THRESHOLD = 0.78
 STATIC_MARGIN_THRESHOLD = 0.22
 DYNAMIC_MARGIN_THRESHOLD = 0.12
 MIN_DYNAMIC_MOTION = 0.00025
+STATIC_MIN_MOTION = 0.0001       # Minimum: hand must be moving (not idle)
+STATIC_MAX_MOTION = 0.004        # Maximum: too much motion = dynamic, not static
 NON_SIGN_THRESHOLD = 0.92
 NON_SIGN_MARGIN_THRESHOLD = 0.28
 NON_SIGN_STABLE_FRAMES = 6
@@ -379,16 +446,44 @@ MAX_SENTENCE = 5
 
 
 # ==========================================
-# MEDIAPIPE + CAMERA
+# MEDIAPIPE + CAMERA (RPi5 Linux)
 # ==========================================
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 
-cap = cv2.VideoCapture(0)
+# RPi5 Linux: Try V4L2 backend for USB cameras
+cap = None
+for i in range(10):  # Try indices 0-9 for RPi
+    try:
+        test_cap = cv2.VideoCapture(i, cv2.CAP_V4L2)  # V4L2 for Linux
+        if test_cap.isOpened():
+            ret, frame = test_cap.read()
+            if ret and frame is not None:
+                cap = test_cap
+                print(f"✓ Camera found at /dev/video{i}")
+                break
+            else:
+                test_cap.release()
+    except Exception as e:
+        pass
+
+if cap is None:
+    print("Error: No camera found on /dev/video0-9")
+    print("\nTroubleshooting for RPi5:")
+    print("  1. Run: ls -la /dev/video*")
+    print("  2. Check: sudo vcgencmd get_camera")
+    print("  3. For USB camera: dmesg | grep -i usb")
+    print("  4. Try: v4l2-ctl --list-devices")
+    exit()
 
 if not cap.isOpened():
-    print("Error: Camera not found.")
+    print("Error: Camera failed to initialize.")
     exit()
+
+# RPi USB camera settings
+cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce latency
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
@@ -398,6 +493,56 @@ out = cv2.VideoWriter("output_collection.avi", fourcc, OUTPUT_FPS, (width, heigh
 
 prev_time = time.time()
 
+# ==========================================
+# TOUCH HANDLER FOR 7" SCREEN
+# ==========================================
+# Most common languages for easy access
+TOUCH_LANGUAGES = [
+    ("1", "English"), ("2", "Filipino"), ("3", "Spanish"),
+    ("9", "Japanese"), ("0", "Korean"), ("a", "Arabic"),
+    ("c", "Chinese"), ("f", "French"), ("d", "German"),
+]
+
+def touch_callback(event, x, y, flags, param):
+    global current_lang_key
+    if event == cv2.EVENT_LBUTTONDOWN:
+        button_width = 100
+        button_height = 40
+        
+        # Check which language button was clicked
+        for idx, (key, name) in enumerate(TOUCH_LANGUAGES):
+            bx = 10
+            by = 40 + (idx * 45)  # Vertical spacing
+            
+            if bx < x < (bx + button_width) and by < y < (by + button_height):
+                current_lang_key = key
+                lang_code, lang_name = language_options[key]
+                print(f"[TOUCH] Language switched to: {lang_name}")
+                break
+
+# Set up window with fullscreen and get screen resolution
+cv2.namedWindow("Sign Language Translator", cv2.WINDOW_NORMAL)
+cv2.setWindowProperty("Sign Language Translator", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+cv2.setMouseCallback("Sign Language Translator", touch_callback)
+
+# Get screen resolution for stretching
+import subprocess
+try:
+    # Try to get screen resolution from system
+    result = subprocess.run(['xrandr'], capture_output=True, text=True)
+    for line in result.stdout.split('\n'):
+        if 'connected primary' in line or ' connected' in line:
+            parts = line.split()
+            for part in parts:
+                if 'x' in part and '+' in part:
+                    screen_width, screen_height = map(int, part.split('+')[0].split('x'))
+                    print(f"Screen resolution: {screen_width}x{screen_height}")
+                    break
+except:
+    # Fallback for RPi/other systems
+    screen_width = 800   # Common RPi 7" screen
+    screen_height = 480
+    print(f"Using default screen resolution: {screen_width}x{screen_height}")
 
 # ==========================================
 # MAIN LOOP
@@ -468,14 +613,27 @@ with mp_hands.Hands(
                 predictions.clear()
                 non_sign_streak = 0
             else:
-                res = model.predict(np.expand_dims(sequence, axis=0), verbose=0)[0]
+                # TFLite inference
+                input_data = np.expand_dims(sequence, axis=0).astype(np.float32)
+                interpreter.set_tensor(input_details[0]['index'], input_data)
+                interpreter.invoke()
+                res = interpreter.get_tensor(output_details[0]['index'])[0]
 
-                top5_idx = np.argsort(res)[-5:][::-1]
+                # Bounds checking - ensure res size matches actions
+                if len(res) != len(actions):
+                    print(f"WARNING: Model output size {len(res)} != actions size {len(actions)}")
+                    res = res[:len(actions)]  # Truncate if larger
+
+                top5_count = min(5, len(res))
+                top5_idx = np.argsort(res)[-top5_count:][::-1]
                 print("Top 5 predictions:")
                 for idx in top5_idx:
-                    print(f"  {actions[idx]}: {float(res[idx]):.4f}")
+                    if 0 <= idx < len(actions):
+                        print(f"  {actions[idx]}: {float(res[idx]):.4f}")
 
                 best_idx = int(np.argmax(res))
+                if best_idx >= len(actions):
+                    best_idx = len(actions) - 1  # Safe fallback
                 predicted_action = actions[best_idx]
                 confidence = float(res[best_idx])
                 second_best = float(np.partition(res, -2)[-2]) if len(res) > 1 else 0.0
@@ -500,20 +658,49 @@ with mp_hands.Hands(
                 avg_margin = float(np.mean(margin_history)) if margin_history else 0.0
                 avg_motion = float(np.mean(motion_history)) if motion_history else 0.0
 
+                # ==========================================
+                # MOTION-BASED STATIC vs DYNAMIC DISCRIMINATOR
+                # ==========================================
+                DYNAMIC_MOTION_THRESHOLD = 0.0005
+                
                 if predicted_action in DYNAMIC_ACTIONS:
+                    action_type = "DYNAMIC"
                     confidence_gate = DYNAMIC_THRESHOLD
                     margin_gate = DYNAMIC_MARGIN_THRESHOLD
-                    motion_gate_ok = avg_motion >= MIN_DYNAMIC_MOTION
+                    
+                    # DYNAMIC ACTIONS MUST HAVE MOTION
+                    if avg_motion < DYNAMIC_MOTION_THRESHOLD:
+                        print(f"  [REJECT DYNAMIC] {predicted_action}: motion {avg_motion:.6f} < {DYNAMIC_MOTION_THRESHOLD:.6f} (too static)")
+                        motion_gate_ok = False
+                    else:
+                        motion_gate_ok = True
                 else:
+                    action_type = "STATIC"
                     confidence_gate = STATIC_THRESHOLD
                     margin_gate = STATIC_MARGIN_THRESHOLD
-                    motion_gate_ok = True
+                    
+                    # STATIC LETTERS: must have moderate motion (not idle, not too dynamic)
+                    if avg_motion < STATIC_MIN_MOTION:
+                        print(f"  [REJECT STATIC] {predicted_action}: motion {avg_motion:.6f} < {STATIC_MIN_MOTION:.6f} (too idle)")
+                        motion_gate_ok = False
+                    elif avg_motion > STATIC_MAX_MOTION:
+                        print(f"  [REJECT STATIC] {predicted_action}: motion {avg_motion:.6f} > {STATIC_MAX_MOTION:.6f} (too dynamic)")
+                        motion_gate_ok = False
+                    else:
+                        motion_gate_ok = True
 
                 quality_ok = (
                     (avg_conf >= confidence_gate)
                     and (avg_margin >= margin_gate)
                     and motion_gate_ok
                 )
+
+                # Debug: Show why detection passed/failed
+                if predicted_action not in ["none", "idle"]:
+                    conf_ok = avg_conf >= confidence_gate
+                    margin_ok = avg_margin >= margin_gate
+                    status = "✓ PASS" if (conf_ok and margin_ok and motion_gate_ok) else "✗ FAIL"
+                    print(f"  {status} [{action_type}] {predicted_action} | Conf: {avg_conf:.2f}>{confidence_gate:.2f}? {conf_ok} | Margin: {avg_margin:.3f}>{margin_gate:.3f}? {margin_ok} | Motion: {avg_motion:.6f}")
 
                 # Ignore none/idle as output, but keep them as model classes
                 if is_non_sign(predicted_action):
@@ -600,13 +787,13 @@ with mp_hands.Hands(
             last_sentence_signature = sentence_signature
 
         # ==========================================
-        # UI
+        # UI - WITH 7" TOUCH SCREEN LANGUAGE BUTTONS
         # ==========================================
         cv2.rectangle(image, (0, 0), (width, 45), (245, 117, 16), -1)
         cv2.putText(
             image,
             cached_sentence_display,
-            (10, 30),
+            (120, 30),  # Shift right to avoid overlap with language buttons
             cv2.FONT_HERSHEY_SIMPLEX,
             0.9,
             (255, 255, 255),
@@ -614,10 +801,36 @@ with mp_hands.Hands(
             cv2.LINE_AA,
         )
 
+        # Draw language buttons on left side (for 7" touch screen) - TOUCHABLE
+        button_width = 100
+        button_height = 40
+        
+        for idx, (key, name) in enumerate(TOUCH_LANGUAGES):
+            bx = 10
+            by = 40 + (idx * 45)  # Vertical spacing
+            
+            # Highlight current language
+            if current_lang_key == key:
+                btn_color = (0, 200, 0)  # Green
+            else:
+                btn_color = (100, 100, 100)  # Gray
+            
+            cv2.rectangle(image, (bx, by), (bx + button_width, by + button_height), btn_color, -1)
+            cv2.putText(
+                image,
+                name[:6],  # Truncate long names
+                (bx + 5, by + 26),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+
         cv2.putText(
             image,
             f"Language: {lang_name}",
-            (10, 75),
+            (120, 75),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             (255, 255, 0),
@@ -629,7 +842,7 @@ with mp_hands.Hands(
             cv2.putText(
                 image,
                 "Dialect: Cebuano",
-                (10, 135),
+                (120, 135),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.65,
                 (255, 220, 120),
@@ -639,8 +852,8 @@ with mp_hands.Hands(
 
         cv2.putText(
             image,
-            "Keys: 1-0/a-z languages | h=list | q=quit",
-            (10, 105),
+            "TAP language buttons | q=quit",
+            (120, 105),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.5,
             (220, 220, 220),
@@ -666,7 +879,7 @@ with mp_hands.Hands(
         cv2.putText(
             image,
             status_text,
-            (10, height - 55),
+            (120, height - 55),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             text_color,
@@ -678,7 +891,7 @@ with mp_hands.Hands(
             cv2.putText(
                 image,
                 f"Translated: {translated_preview}",
-                (10, height - 20),
+                (120, height - 20),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.75,
                 (255, 255, 255),
@@ -689,7 +902,7 @@ with mp_hands.Hands(
         cv2.putText(
             image,
             f"Motion: {motion_score:.4f}",
-            (width - 220, 65),
+            (width - 220, 75),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.65,
             (255, 255, 255),
@@ -704,7 +917,7 @@ with mp_hands.Hands(
         cv2.putText(
             image,
             f"FPS: {int(fps)}",
-            (width - 120, 30),
+            (width - 120, 50),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             (0, 255, 0),
@@ -716,7 +929,10 @@ with mp_hands.Hands(
         print(f"Latency: {latency_ms:.2f} ms")
 
         out.write(image)
-        cv2.imshow("Sign Language Translator", image)
+        
+        # Stretch image to fullscreen resolution
+        display_image = cv2.resize(image, (screen_width, screen_height), interpolation=cv2.INTER_LINEAR)
+        cv2.imshow("Sign Language Translator", display_image)
 
         key = cv2.waitKey(10) & 0xFF
         if key == ord("q"):

@@ -73,8 +73,8 @@ DYNAMIC_ACTIONS = {
     if action not in set(list("abcdefghijklmnopqrstuvwxyz") + ["1", "2", "3", "none", "idle"])
 }
 NON_SIGN_CLASSES = {"none", "idle"}
-NON_SIGN_WEIGHT_SCALE = 0.45
-SIGN_WEIGHT_SCALE = 1.15
+NON_SIGN_WEIGHT_SCALE = 0.20  # Heavily reduce idle/none dominance (was 0.45)
+SIGN_WEIGHT_SCALE = 1.50      # Increase gesture class priority (was 1.15)
 LOW_CONF_CLASSES = {"a", "How are you", "Nice to meet you!"}
 LOW_CONF_WEIGHT_SCALE = 1.35
 # ---------------------
@@ -279,6 +279,23 @@ model.fit(
 
 model.save('action.h5')
 print("Model Trained Successfully!")
+
+# ==========================================
+# CONVERT TO TFLITE (ARM Optimization)
+# ==========================================
+print("Converting model to TFLite format...")
+try:
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS
+    ]
+    tflite_model = converter.convert()
+    with open('action.tflite', 'wb') as f:
+        f.write(tflite_model)
+    print("✓ TFLite model saved as 'action.tflite'!")
+except Exception as e:
+    print(f"TFLite conversion error: {e}")
 
 # ==========================================
 # GENERATE CONFUSION MATRIX FOR THESIS
